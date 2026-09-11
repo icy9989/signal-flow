@@ -1,0 +1,257 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum FeedbackProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum FeedbackSentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum FeedbackCategory {
+  BUG
+  FEATURE_REQUEST
+  COMPLAINT
+  PRAISE
+  QUESTION
+  OTHER
+}
+
+enum FeedbackSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum InsightType {
+  EMERGING_ISSUE
+  TREND
+  SUMMARY
+  RECOMMENDATION
+}
+
+model User {
+  id             String   @id @default(cuid())
+  externalAuthId String   @unique
+  email          String   @unique
+  name           String?
+  image          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  memberships OrganizationMember[]
+  imports     FeedbackImport[]
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships OrganizationMember[]
+  projects    Project[]
+  imports     FeedbackImport[]
+  feedback    Feedback[]
+  analyses    FeedbackAnalysis[]
+  embeddings  FeedbackEmbedding[]
+  topics      Topic[]
+  insights    Insight[]
+}
+
+model OrganizationMember {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String
+  role           OrganizationRole @default(MEMBER)
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+model Project {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  imports      FeedbackImport[]
+  feedback     Feedback[]
+  topics       Topic[]
+  insights     Insight[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model FeedbackImport {
+  id             String       @id @default(cuid())
+  organizationId String
+  projectId      String
+  createdById    String
+  fileName       String
+  status         ImportStatus @default(PENDING)
+  totalRows      Int          @default(0)
+  validRows      Int          @default(0)
+  invalidRows    Int          @default(0)
+  importedRows   Int          @default(0)
+  errorMessage   String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation(fields: [createdById], references: [id])
+  feedback     Feedback[]
+
+  @@index([organizationId, projectId, createdAt])
+}
+
+model Feedback {
+  id                String                   @id @default(cuid())
+  organizationId    String
+  projectId         String
+  importId          String?
+  source            String
+  externalId        String?
+  content           String
+  customerReference String?
+  occurredAt        DateTime?
+  processingStatus  FeedbackProcessingStatus @default(PENDING)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  import       FeedbackImport?    @relation(fields: [importId], references: [id], onDelete: SetNull)
+  analysis     FeedbackAnalysis?
+  embedding    FeedbackEmbedding?
+  topicLinks   TopicFeedback[]
+
+  @@unique([projectId, externalId])
+  @@index([organizationId, projectId, occurredAt])
+  @@index([organizationId, processingStatus])
+  @@index([projectId, source])
+}
+
+model FeedbackAnalysis {
+  id             String             @id @default(cuid())
+  organizationId String
+  feedbackId     String             @unique
+  sentiment      FeedbackSentiment?
+  category       FeedbackCategory?
+  topicLabel     String?
+  severity       FeedbackSeverity?
+  summary        String?
+  model          String
+  schemaVersion  String
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  feedback     Feedback     @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, sentiment])
+  @@index([organizationId, category])
+}
+
+model FeedbackEmbedding {
+  id             String                      @id @default(cuid())
+  organizationId String
+  feedbackId     String                      @unique
+  model          String
+  embedding      Unsupported("vector(1536)")
+  createdAt      DateTime                    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  feedback     Feedback     @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model Topic {
+  id             String   @id @default(cuid())
+  organizationId String
+  projectId      String
+  name           String
+  slug           String
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  feedback     TopicFeedback[]
+  insights     Insight[]
+
+  @@unique([projectId, slug])
+  @@index([organizationId, projectId])
+}
+
+model TopicFeedback {
+  topicId    String
+  feedbackId String
+  createdAt  DateTime @default(now())
+
+  topic    Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  feedback Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+
+  @@id([topicId, feedbackId])
+  @@index([feedbackId])
+}
+
+model Insight {
+  id             String      @id @default(cuid())
+  organizationId String
+  projectId      String
+  topicId        String?
+  type           InsightType
+  title          String
+  summary        String
+  evidence       Json?
+  startsAt       DateTime?
+  endsAt         DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  topic        Topic?       @relation(fields: [topicId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, projectId, createdAt])
+  @@index([topicId])
+}
