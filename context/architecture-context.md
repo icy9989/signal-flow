@@ -83,10 +83,14 @@ All privileged operations pass through trusted server-side boundaries.
 
 # Application Architecture
 
+Onboarding uses `/app/onboarding` outside the dashboard route group, under the shared authenticated `/app` layout. Its server resolver composes the existing membership and active-project resolution and a tenant/project-scoped completed-import existence query requiring persisted feedback. No onboarding flags or step cookies are stored. Overview sends incomplete setup to onboarding; project/workspace management remains accessible for selection and creation. The first-import step reuses the shared CSV preview and execution flow. Confirmation navigates to a persisted import result; completed onboarding navigates to `/app/feedback`, the project-scoped Feedback Inbox.
+
 The application shell lives in `src/app/` and `src/components/`. `/app/*` is
 protected through Clerk and local application-user resolution. The layout and
-overview independently resolve verified organization memberships. Users without
-memberships see onboarding; active workspaces show the empty project state.
+overview independently resolve verified organization memberships and project context. Users without
+memberships see onboarding; active workspaces show their selected project or a project empty state.
+`/app/projects` lists organization-owned projects; `/app/projects/new` allows owners/admins to create them.
+Desktop and mobile selectors persist verified project selection and refresh the project overview.
 `/app/workspaces/new` provides workspace creation. Other product navigation stays
 disabled until its feature unit is implemented.
 
@@ -890,7 +894,7 @@ The exact Prisma implementation may vary, but organization scope must be enforce
 - Memberships are ordered by creation time and ID. Zero memberships show onboarding; otherwise use the selected accessible membership or the first valid membership. Workspace switches redirect to `/app/overview` and refresh the application layout.
 - Workspace slugs are generated server-side and remain stable. Normalize names to lowercase ASCII hyphenated text, use `workspace` when no ASCII characters remain, and bound the slug base to 80 characters for index size. Retry unique conflicts with numeric suffixes, then a UUID suffix. Slugs never authorize access.
 - Organization and initial OWNER membership use a single atomic Prisma nested write. Public service entry points authenticate independently; persistence helpers receive only server-resolved identity and explicit organization scope.
-- Workspace names are required, trimmed, and limited to 100 characters (user-approved on 2026-09-11). Slug editing, renaming, deletion, ownership transfer, invitations, and project creation remain deferred.
+- Workspace names are required, trimmed, and limited to 100 characters (user-approved on 2026-09-11). Slug editing, renaming, deletion, ownership transfer and invitations remain deferred. Project creation is implemented separately under the V1 project decisions below.
 
 ## Database and Clerk identity foundation
 
@@ -981,6 +985,19 @@ Mutation permissions should be defined explicitly per feature.
 # AI Architecture
 
 AI is an interpretation layer, not the source of truth.
+
+## Single-feedback classification V1 decisions (2026-09-11)
+
+- Feature 07 implements a server-only single-feedback service and read-only Inbox enrichment. No classification runs during imports, page reads, or HTTP requests; queue orchestration follows in the next feature.
+- Classification uses the spec's three sentiments, eight categories, and four severity levels. Extend the existing database category enum additively; legacy COMPLAINT/PRAISE/QUESTION values remain stored but are not valid V1 output or reused as current analyses.
+- Extend existing `FeedbackAnalysis` with `topics String[]` and nullable `promptVersion`; preserve legacy `topicLabel` without using it for new output. Project ownership follows `FeedbackAnalysis.feedback.projectId`; organization is copied only from the authorized source. One current analysis remains enforced by unique feedbackId.
+- Contract bounds: 1–5 unique lowercase trimmed topics, each at most 80 characters; English summary at most 400 characters. Parse a bounded raw shape first (at most 20 candidate topics, 200 characters each, summary at most 2,000), then normalize, drop empty topics, deduplicate, take five, and strictly validate final bounds. Reject oversized individual labels/summaries rather than silently clipping meaning. Reject unchanged copies of source text longer than 200 characters.
+- Empty source or source exceeding 20,000 characters fails before provider access; no source truncation. Source content is the only customer data supplied to the model.
+- Mutating classification requires existing authenticated OWNER/ADMIN project access. Members retain read-only access. The service rechecks authorization after the provider returns, before saving output.
+- Atomically claim non-PROCESSING feedback with its observed updatedAt; completion and one-analysis upsert share a short transaction. No transaction spans provider access. Conditional writes fence changes to the claimed source. PROCESSING returns a conflict; interrupted-process recovery belongs to the later background feature.
+- Reuse only a complete, valid, normalized analysis with matching model, prompt and schema versions and COMPLETED feedback status. Explicit force, failed state, invalid/missing analysis or version mismatch allows reclassification. Failed reclassification preserves any prior analysis and original source; the UI labels prior output as previous analysis.
+- Retry malformed output once with a static correction instruction, never raw validation errors. Provider/network/timeout/rate-limit failures return safe distinct codes for later retry; no hidden provider retry loop. Store the safe code on Feedback.analysisErrorCode; do not store raw provider output or log source text.
+- Provider/model selection is pending; schema, prompt and persistence are provider-independent.
 
 Main AI capabilities:
 
@@ -1253,6 +1270,17 @@ Tenant filtering is mandatory.
 ---
 
 # CSV Import Architecture
+
+## CSV preview V1 decisions (2026-09-11)
+
+- Shared single-page preview at `/app/imports/new` and in the onboarding first-import step. File stays in component memory; no localStorage, raw-file retention, temporary database records, or persistence.
+- Independently authenticated Server Actions parse the original upload for detection and reparse it for preview; only headers/counts return during detection. OWNER/ADMIN access follows existing import permissions. Membership and project ownership are verified for every request.
+- Temporary engineering bounds: 512 KiB UTF-8 files, 5,000 data records, 100 columns, below the default Server Action body limit. These are preview capacity safeguards, not permanent product/plan limits. UI and server enforce the same bounds.
+- Comma-delimited CSV supports BOM, CRLF/LF/CR, quoted multiline cells and escaped quotes; malformed quotes, blank/duplicate headers and inconsistent widths are rejected. Blank physical lines are ignored; delimiter-only records are validated. Source row numbers refer to the physical starting line.
+- Mapping uses unique source columns, exact stable column keys and deterministic unambiguous suggestions. Optional blanks become null; internal content whitespace is preserved.
+- Supported dates: `YYYY-MM-DD` at UTC midnight, or ISO timestamps with seconds and explicit `Z`/numeric timezone (optional 1–3 fractional digits). Invalid calendar dates and ambiguous/local dates are invalid rows.
+- INVALID precedes DUPLICATE. First valid external ID occurrence is eligible; subsequent valid matches are duplicates. Invalid rows do not reserve IDs. Existing IDs use one organization/project-scoped query; no text-based deduplication.
+- Preview uses 25-row pagination. Continue exposes a readiness summary; final confirmation reauthenticates and revalidates the original file with the canonical functions before insertion (execution decisions below).
 
 CSV import is a separate pipeline from AI processing.
 
@@ -1897,3 +1925,23 @@ The architecture must preserve this separation.
 - Active project uses a revalidated HttpOnly, SameSite=Lax, production-Secure cookie scoped to `/app`, matching workspace selection. Routes remain `/app/overview` and `/app/projects`; project IDs are not route segments.
 - Missing/stale/cross-workspace preferences fall back to the newest project (ID breaks timestamp ties). Empty workspaces remain empty until explicit creation. Switching workspace automatically revalidates project ownership.
 - Creation, listing, and selection only: editing, deletion, archival, and import remain outside this feature. No schema migration is required.
+
+## CSV execution and history V1 decisions (2026-09-11)
+
+- Confirmation resubmits the original bounded CSV and mapping; the same canonical parser, row validation and duplicate classification run after fresh OWNER/ADMIN project authorization.
+- Preview issues a random execution UUID without creating database records. Confirmation uses it as the existing FeedbackImport primary key. Atomic attempt creation and a conditional PENDING → PROCESSING claim prevent replay, including rows without external IDs. Retries return the same scoped persisted attempt; failed attempts are not rerun.
+- Attempt metadata survives outside the feedback transaction. Feedback insertion and COMPLETED counters commit atomically. Failed transactions are recorded as FAILED with a safe execution message; process interruption may leave PROCESSING visible for investigation, without claiming success or offering unsafe reruns.
+- Existing counters are sufficient: validRows means eligible rows after duplicate exclusion, invalidRows means invalid candidates, and duplicates = totalRows - invalidRows - validRows. On completion validRows = importedRows, including insert-time uniqueness skips. Failed attempts retain revalidation counters and importedRows = 0. No new schema fields or statuses are introduced. Timestamps are labeled Created/Updated, since no completedAt field exists.
+- Optional blank source is persisted as "csv" because Feedback.source is required. Other optional metadata remains null. Raw files and rejected row contents are not retained; feedback processing starts PENDING without AI calls.
+- Completed-with-zero records are allowed and shown as "No new feedback was imported"; only completed imports with associated persisted feedback complete onboarding.
+- History shows the latest 50 imports for the authorized active project, newest first. Details require organization, project and import ID. The View feedback action opens the project-scoped Feedback Inbox described below.
+
+
+## Feedback Inbox
+
+- `/app/feedback` uses Server Components and explicit GET form submission for URL state (`q`, `source`, `importId`, `from`, `to`, `cursor`). `/app/feedback/[feedbackId]` shows full original text and scoped import metadata; its Back link preserves inbox state.
+- Every service operation independently invokes the existing authenticated project-access boundary. Repository queries include organization and project scope, including counts, source options, import options, and import/detail lookups. Members may read; only owners/admins see the existing import CTA.
+- Pages contain 25 items. The repository clamps internal page size to 1–50 and fetches one extra row. Keyset pagination orders by `createdAt DESC, id DESC` (newest imported first); nullable occurrence dates do not affect ordering. Validated opaque cursors contain the timestamp, ID, direction and a scope/filter fingerprint. A changed project/filter starts the first page; cursor contents never grant access.
+- Keyword search uses case-insensitive literal substring matching on content, external ID and customer reference. LIKE wildcard characters are escaped. Source equality, scoped import ID, and inclusive UTC occurrence-date ranges compose with search. Missing occurrence dates do not match a date range.
+- Query text is bounded to 500 characters as a request safeguard; malformed/duplicate parameters and invalid date ranges produce a clear-filter recovery state. Invalid or foreign import filters return the same unavailable message. No raw SQL, AI fields, content mutation, new dependencies or schema changes are introduced.
+- UI truncates previews visually, renders imported content as plain text, labels UTC dates, and distinguishes an empty project from no matches. Source/import options come from actual scoped data. Queries are constant in number with no per-row metadata lookup. Existing scope/occurrence and project/source indexes remain; a created-time composite index and search-specific optimization can follow measured volume needs.

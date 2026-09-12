@@ -60,6 +60,8 @@
   --color-primary-foreground: var(--bg-base);
   --color-primary-soft: var(--accent-primary-soft);
   --color-primary-border: var(--accent-primary-border);
+  --color-warning: var(--state-warning);
+  --color-destructive: var(--state-error);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

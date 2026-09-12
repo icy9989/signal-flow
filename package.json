@@ -14,8 +14,13 @@
     "db:status": "prisma migrate status",
     "db:studio": "prisma studio",
     "db:check": "node --conditions=react-server --import tsx scripts/check-database.ts",
-    "test:db": "node --conditions=react-server --import tsx --test tests/database.test.ts tests/organizations.test.ts",
-    "test:actions": "node --experimental-test-module-mocks --conditions=react-server --import tsx --test tests/workspace-actions.test.ts"
+    "test:db": "node --conditions=react-server --import tsx --test tests/database.test.ts tests/organizations.test.ts tests/projects.test.ts",
+    "test:actions": "node --experimental-test-module-mocks --conditions=react-server --import tsx --test tests/workspace-actions.test.ts tests/project-actions.test.ts tests/import-actions.test.ts",
+    "test:onboarding": "node --experimental-test-module-mocks --conditions=react-server --import tsx --test tests/onboarding.test.ts",
+    "test:imports": "node --conditions=react-server --import tsx --test tests/import-execution.test.ts",
+    "test:csv": "node --conditions=react-server --import tsx --test tests/csv-preview.test.ts tests/csv-preview-db.test.ts",
+    "test:feedback": "node --conditions=react-server --import tsx --test tests/feedback-inbox.test.ts",
+    "test:feedback:ui": "node --import tsx --test tests/feedback-ui.test.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.2",

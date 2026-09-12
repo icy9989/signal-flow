@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import type { WorkspaceActionState } from "@/lib/validation/organization";
-import { organizationService, switchActiveOrganization } from "@/server/auth/organization-context";
+import { organizationService, resolveActiveOrganization, switchActiveOrganization } from "@/server/auth/organization-context";
 import { OrganizationError } from "@/server/services/organization-service";
 
 function actionError(error: unknown, operation: string): WorkspaceActionState {
@@ -16,14 +16,16 @@ function actionError(error: unknown, operation: string): WorkspaceActionState {
 }
 
 export async function createWorkspaceAction(_previous: WorkspaceActionState, formData: FormData): Promise<WorkspaceActionState> {
+  const onboarding = formData.get("flow") === "onboarding";
   try {
+    if (onboarding && (await resolveActiveOrganization()).active) redirect("/app/onboarding");
     const organization = await organizationService.createOrganizationForUser({ name: formData.get("name") });
     await switchActiveOrganization(organization.id);
   } catch (error) {
     return actionError(error, "create_workspace");
   }
   revalidatePath("/app", "layout");
-  redirect("/app/overview");
+  redirect(onboarding ? "/app/onboarding" : "/app/overview");
 }
 
 export async function switchWorkspaceAction(_previous: WorkspaceActionState, formData: FormData): Promise<WorkspaceActionState> {

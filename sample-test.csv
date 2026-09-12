@@ -1,0 +1,11 @@
+external_id,feedback,source,customer,date
+FB-001,"The dashboard is easy to use and looks great.","Survey","Customer 1","2026-09-01"
+FB-002,"The app takes too long to load sometimes.","Support","Customer 2","2026-09-02"
+FB-003,"Please add an export to PDF feature.","Survey","Customer 3","2026-09-03"
+FB-004,"I cannot log in after resetting my password.","Support","Customer 4","2026-09-04"
+FB-005,"The new dashboard design is much better.","Review","Customer 5","2026-09-05"
+FB-006,"I would like a dark mode option.","Survey","Customer 6","2026-09-06"
+FB-007,"Notifications sometimes arrive twice.","Support","Customer 7","2026-09-07"
+FB-008,"The search feature is very useful.","Review","Customer 8","2026-09-08"
+FB-009,The search feature is very useful.,"Review","Customer 8","2026-09-08"
+FB-007,"Notifications sometimes arrive twice.","Support","Customer 7","2026-09-07"

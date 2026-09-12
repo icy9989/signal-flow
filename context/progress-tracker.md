@@ -4,12 +4,12 @@ Update this file whenever the current phase, active feature,  or implementation 
 
 ## Current Phase
 
-- Phase 2 — Multi-Tenant Foundation.
+- Phase 5 — AI Feedback Classification.
 - Application shell, Clerk authentication, PostgreSQL/Prisma, user synchronization, and organization workspaces implemented. Tenant isolation is verified; interactive signed-in browser verification remains outstanding.
 
 ## Current Goal
 
-- Implement Project Management from `feature-specs/02-project-management.md`, then verify authorization, creation, selection, and UI.
+- AI Feedback Classification (`feature-specs/07-ai-feedback-classification.md`) — in progress. Implement units 1–8 sequentially: contract, prompt/provider, normalization, persistence, reuse/retry, failures, read-only Inbox integration, and verification.
 
 ## Completed
 
@@ -48,20 +48,27 @@ Update this file whenever the current phase, active feature,  or implementation 
 
 ## In Progress
 
-- Project Management (`feature-specs/02-project-management.md`) — in progress: authorization foundation, organization-scoped listing, creation, active selection, and modern dark/green UI. MEMBER creation permission is awaiting clarification; no permanent input limits will be invented.
+- AI Feedback Classification — specification reviewed; starting the validated classification contract. Provider/model selection requested; independent schema and persistence work can proceed.
+
+- Feedback Inbox — implemented; authenticated end-to-end interaction, visual/mobile and keyboard acceptance remain outstanding because browser discovery returned no connected browsers.
+
+- Onboarding Flow (`feature-specs/03-onboarding-flow.md`) — shared CSV preview/execution and persisted result are integrated. Successful imports activate the project; completed onboarding lands at `/app/feedback`. Full browser activation acceptance remains outstanding.
+
+- Project Management (`feature-specs/02-project-management.md`) — implemented; database, action, TypeScript, lint, and production-build checks pass. Authenticated browser acceptance remains in progress because no browser is connected.
 
 - Organization Workspaces (`feature-specs/01-organization-workspaces.md`) — implemented; authenticated browser acceptance and visual/keyboard/mobile verification outstanding because no browser is connected. Server verification passed; details below.
 
 ## Next Up
 
-1. Connect a browser and verify sign-in → onboarding → create workspace → active overview, plus switching and mobile/keyboard behavior.
-2. Implement project creation using the verified organization context after workspace acceptance.
+1. Connect a browser and verify sign-in → onboarding → workspace → project → CSV preview → confirmation → result → feedback/history, including refresh, switching, and mobile/keyboard behavior.
+2. Complete authenticated Feedback Inbox browser acceptance: search, filters, clear, pagination, detail/back, mobile layout and keyboard interaction.
+3. Keep AI classification and background processing separate from import completion.
 
 ## Open Questions
 
 - Clerk is the selected authentication provider; default Clerk sign-in methods remain pending dashboard configuration.
 - The existing Prisma Postgres connection in `.env.local` is configured and verified; its initial migration has been applied.
-- Later phases still require explicit CSV limits / duplicate policy, AI provider and schema details, and bounded queue retry policy before those behaviors are implemented.
+- CSV engineering limits and external-ID duplicate policy are documented in the architecture; permanent plan limits, AI provider/schema details and bounded queue retry policy remain future decisions.
 
 ## Architecture Decisions
 
@@ -216,7 +223,102 @@ Update this file whenever the current phase, active feature,  or implementation 
 
 ### Project Management — 2026-09-11
 
+- **Feature:** `feature-specs/02-project-management.md`, units 1–6.
+- **Status:** Implemented; server/database checks complete. Authenticated browser acceptance remains outstanding; the full definition of done is not yet claimed.
+- **Completed:**
+  - Organization-scoped repository and independently authenticated membership authorization; known cross-tenant IDs receive non-leaking errors.
+  - Server-validated creation with trimmed names/descriptions, OWNER/ADMIN enforcement, trusted organization ownership, and friendly database uniqueness conflicts.
+  - Scoped project list, explicit empty state, creation form, and desktop/mobile project selectors. Workspace and project selection remain distinct.
+  - Revalidated HttpOnly project preference; zero/one/multiple projects and stale/deleted/cross-workspace preferences resolve safely.
+  - Selected-project overview, creation confirmation, project navigation highlighting, pending states, loading skeletons, and retry errors. CSV import stays disabled and no analytics are fabricated.
+  - Standard test scripts now include project database and action suites.
+- **Files changed:** Application layout/overview/project actions/loading/error routes; layout navigation components; `tests/projects.test.ts`, `tests/project-actions.test.ts`; `package.json`; architecture/progress documentation. Existing project service, repository, validation, forms, and selector foundation integrated and verified.
+- **Verification:**
+  - `npm run test:db`: 20 passing tests, including seven project tests. Covered correct ownership, validation, concurrent duplicates, same names across tenants, OWNER/ADMIN/MEMBER permissions, membership revocation, two-way known-ID isolation, and zero/one/multiple/stale/deleted selection. Temporary fixtures cleaned up.
+  - `npm run test:actions`: seven passing tests, including four project action tests. Covered authentication redirects, forged ownership, cookie options, layout refresh, cross-workspace rejection, role denial, and sanitized unexpected failures.
+  - `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed.
+  - Production HTTP smoke checks: `/app/overview`, `/app/projects`, and `/app/projects/new` returned 307 for unauthenticated requests. Temporary production server stopped.
+  - Database tests required network access outside the sandbox; production build used the required process permissions.
+- **Known issues:**
+  - Browser connection returned no available browsers (confirmed by discovery). Authenticated end-to-end, visual, mobile, and keyboard checks remain unverified.
+  - Existing installed Clerk template lint warning, parent-directory lockfile build warning, and Node experimental module-mock notices remain non-blocking.
+- **Policy:** OWNER/ADMIN create; MEMBER views/selects. No permanent text-length limits. Case-sensitive per-workspace uniqueness follows the existing schema. No schema migration required.
+- **Next unit:** Authenticated browser acceptance, then CSV Feedback Import.
+
+### Onboarding Flow — 2026-09-11
+
+- **Feature:** `feature-specs/03-onboarding-flow.md`, Stage A and durable completion query.
+- **Status:** Stage A implemented. Full onboarding remains in progress pending the real CSV importer and authenticated browser acceptance.
+- **Completed:**
+  - Added server-only `resolveOnboardingState()` coordinating existing authenticated workspace/project preference resolution. States are WORKSPACE, PROJECT, FIRST_IMPORT, and COMPLETE; no browser step or completion flag is trusted or persisted.
+  - Added a tenant/project-scoped import existence query requiring COMPLETED status and actual associated feedback in the same tenant/project. Empty, pending, processing, failed, and foreign imports do not complete setup. AI processing is not required.
+  - Added the protected `/app/onboarding` Server Component route, focused branded shell, accessible three-step indicator, workspace/project forms, selection controls, pending-import state, loading skeleton, and retry boundary.
+  - Reused existing creation forms, actions, services, validation, OWNER membership creation, and HttpOnly preference writes. Onboarding submissions return to server resolution; repeated submissions after persisted creation resume without creating additional resources. MEMBER project creation remains restricted.
+  - Separated dashboard presentation into `(dashboard)` without changing public URLs. Shared `/app` authentication remains in place and pages/actions independently authenticate. Overview redirects incomplete setup to onboarding; existing project/workspace management stays accessible.
+  - Completed users return to the existing overview for Stage A. The first-import success screen and Feedback Inbox destination remain Stage B work, as neither the importer nor inbox exists yet.
+- **Files changed:** `src/server/onboarding/resolve-onboarding-state.ts`, `src/server/repositories/import-repository.ts`, `src/app/app/onboarding/*`, `src/app/app/(dashboard)/*`, authenticated app layout, workspace/project actions and shared forms, `src/components/onboarding/*`, `tests/onboarding.test.ts`, `package.json`, architecture/progress context. Existing uncommitted project work was preserved during route moves.
+- **Verification:**
+  - `npm run test:onboarding` passed: 10 database-backed scenarios plus the parent test. Actual services/actions exercised with mocked request/session boundaries; isolated database fixtures removed afterward.
+  - Covered all four states, sign-out/sign-in and cookie-free resume, OWNER membership, validation failures, repeated submissions, missing parents, forged identity/ownership, two-way tenant preferences, scoped persisted feedback, failed imports, multiple/deleted projects, and revoked memberships.
+  - `npm run test:db` passed: all 20 existing database tests.
+  - `npm run test:actions` passed: all seven existing action tests.
+  - TypeScript and lint passed; the existing installed Clerk template warning remains. Final production build passed with external process permissions.
+  - Production HTTP checks for `/app/onboarding`, `/app/overview`, `/app/projects`, and `/app/workspaces/new` all returned 307 to `/sign-in` for anonymous requests. The temporary verification server was stopped afterward.
+- **Known issues:**
+  - Browser runtime discovery returned no connected browsers. Visual, mobile, keyboard, and authenticated end-to-end browser checks remain unverified.
+  - Stage B cannot be connected until CSV Feedback Import works independently. The pending Import step is deliberately disabled and truthful; no temporary importer, fabricated feedback, or false completion is provided.
+  - Existing parent-directory lockfile and Node module-mocking warnings remain non-blocking. No schema migration or dependency was added.
+- **Next unit:** CSV Feedback Import, then onboarding Stage B and Feedback Inbox landing integration.
+
+### CSV Import Execution and History — 2026-09-11
+
+- **Feature:** `feature-specs/05-csv-import-execution-and-history.md`, units 1–9.
+- **Status:** Implemented; server/database, action, TypeScript, lint and production-build verification passed. Authenticated browser acceptance remains outstanding; full visual/interaction verification is not claimed.
+- **Completed:**
+  - Reused canonical CSV parser, mapping, row validation and duplicate classification, with fresh authenticated OWNER/ADMIN project authorization at execution.
+  - Server-issued execution UUIDs, unique attempt creation and conditional lifecycle claim prevent double confirmation, including feedback with no external ID. Retries return the persisted scoped outcome.
+  - Import attempt survives transaction failure. Batch insertion and COMPLETED counters commit atomically; database uniqueness resolves concurrent external IDs, and failures retain safe messages with zero imported rows.
+  - Used existing schema fields, with duplicate count derived from totalRows - invalidRows - validRows; final validRows equals committed importedRows. Blank source maps to `csv`; optional metadata remains nullable. No migration or dependency added.
+  - Connected explicit Import feedback confirmation, pending state, persisted success/zero/failure results, retry guidance, latest-50 history, tenant/project-scoped detail and loading/error/empty states.
+  - Added the required View feedback destination showing the latest 50 actual database rows. Full inbox search, filtering and detail are deferred to the next feature.
+  - Shared onboarding importer now persists feedback and shows results. Only completed imports with actual feedback activate onboarding; completed users land in Feedback.
+  - Preserved existing uncommitted work. Fixed a missing required source in existing CSV database fixtures and an existing JSX apostrophe lint error in the preview error boundary.
+- **Files changed:** `src/server/services/feedback-import-service.ts`, import/feedback repositories, import preview/execution actions, feedback-import components, dashboard import/history/detail/feedback routes, navigation, onboarding/overview pages, `tests/import-execution.test.ts`, `tests/import-actions.test.ts`, CSV test fixtures, `package.json`, and architecture/progress context.
+- **Verification:**
+  - `npm run test:imports`: 9 passing tests (8 scenarios plus parent), including post-preview and insertion-time duplicate races, simultaneous confirmations, atomic rollback, trusted ownership, scoped history/detail, zero-row non-activation and permission denial. Temporary database fixtures cleaned up.
+  - `npm run test:csv`: 12 passed; `npm run test:db`: 20 passed; `npm run test:actions`: 11 passed; `npm run test:onboarding`: 11 passed.
+  - TypeScript passed; lint passed with only the existing installed Clerk template warning. Production build passed.
+  - Production HTTP smoke checks: imports list/new/detail, feedback and onboarding all returned 307 to sign-in for anonymous requests. Temporary production server stopped.
+- **Known issues:** Browser discovery returned no connected browsers; authenticated interaction, visual, mobile and keyboard checks remain unverified. Abrupt process termination or sustained database outage may leave a pending/processing attempt visible without a final result; automatic recovery/rerunning is outside this feature. Existing build lockfile and experimental test-mocking notices remain non-blocking.
+- **Next unit:** Browser acceptance, then full Feedback Inbox.
+
+### Feedback Inbox — 2026-09-11
+
+- **Feature:** `feature-specs/06-feedback-inbox.md`, units 1–7.
+- **Status:** Implemented; server/database, rendered UI, lint, TypeScript and production-build verification passed. Authenticated browser acceptance remains outstanding; full definition of done is not claimed.
+- **Completed:**
+  - Independently authenticated service operations and tenant/project-scoped list, detail, counts, source options, import options and import reference queries. Missing repository scope fails closed; foreign detail IDs remain unavailable.
+  - Bounded 25-item keyset pages (repository clamps 1–50), stable newest-imported `createdAt DESC, id DESC` ordering and forward/backward navigation. Cursors validate structure and bind to project/filter state; changing filters resets pagination.
+  - Case-insensitive literal substring search over original content, external ID and customer reference; escaped LIKE wildcard characters. Exact source, inclusive UTC occurrence-date and authorized import filters compose server-side.
+  - Explicit GET search/filter form and URL state, clear/reset, responsive list, visually truncated previews, full original detail text, missing metadata markers, scoped import links and preserved inbox Back links.
+  - Loading skeletons, retry error boundary using the installed Next.js `retry` API, unavailable detail, validation recovery, distinct empty/no-match states and permission-aware links to the existing importer. No AI fields or editing features.
+  - Replaced the minimal latest-50 landing and removed its unused repository function. No dependency, migration or unrelated refactor introduced; existing uncommitted work preserved.
+- **Files changed:** `src/app/app/(dashboard)/feedback/*`, `src/components/feedback/inbox.tsx`, `src/features/feedback/query.ts`, `src/server/repositories/{feedback-inbox-repository,feedback-repository}.ts`, `src/server/services/feedback-inbox-service.ts`, `tests/feedback-{inbox,ui}.test.ts`, `package.json`, architecture/progress context.
+- **Verification:**
+  - `npm run test:feedback`: 9 passed. Covered 40-row 25/15 pagination, tied timestamps, backward round-trip, page-size clamps, missing scope, all search fields, literal wildcards, date boundaries/nulls, combined filters, complete metadata, two-way tenant isolation, sibling-project denial, invalid inputs, cursor reset, revoked membership and unauthenticated denial. Temporary fixtures cleaned up.
+  - `npm run test:feedback:ui`: 2 passed. Server rendering verifies HTML escaping, semantic filter controls, no cursor in filter submissions, stateful detail/back/pagination links, empty versus no-match states, and import permissions.
+  - Regression suites: imports 9 passed; onboarding 11 passed; actions 11 passed.
+  - TypeScript and lint passed (only the existing installed Clerk template warning). Production build passed after removing generated build/cache artifacts retaining the sandbox port-binding failure and using required process permissions.
+  - Anonymous production requests to inbox, filtered inbox and detail returned HTTP 307 to sign-in. Temporary production server stopped. `git diff --check` passed.
+- **Known issues:** Browser discovery returned no connected browsers. Signed-in browser interaction, visual, mobile and keyboard verification remain unverified. Existing parent-lockfile and experimental module-mock warnings remain non-blocking. Existing indexes retained; search/created-time index optimization should follow measured dataset needs.
+- **Next unit:** Authenticated browser acceptance, then AI Feedback Classification as a separate feature.
+
+### AI Feedback Classification — 2026-09-11
+
+- **Feature:** `feature-specs/07-ai-feedback-classification.md`, units 1–8.
 - **Status:** In progress.
-- **Completed:** Organization-scoped project repository, independent membership authorization, non-leaking project lookup, listing and safe active selection foundation.
-- **Verification:** Two live PostgreSQL tests pass, including known-ID cross-tenant denial in both directions and scoped listing/selection. Test fixtures removed.
-- **Next unit:** Creation, server-managed preference, and modern project UI. Role policy follows the product overview: OWNER/ADMIN create; MEMBER views/selects. Input length limits remain unset per spec.
+- **Completed:** Unit 1 contract and Unit 3 deterministic normalization: exact enums, strict output keys, bounded topics/summary, duplicate/empty topic cleanup, rejection of long verbatim source copies. Engineering limits and persistence decisions documented in architecture context.
+- **Files changed:** `src/server/ai/{schemas,classfication}/*`, `tests/classification-schema.test.ts`, architecture/progress context.
+- **Verification:** Two schema/normalization tests passed. Full lint/type/build and integration checks pending.
+- **Known issues:** Provider/model decision pending; no live classification has run.
+- **Next unit:** Prompt/provider boundary, tenant-safe persistence, retry/failure behavior, and Inbox integration.

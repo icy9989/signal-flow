@@ -1,0 +1,3 @@
+export default function FeedbackLoading() {
+  return <div role="status" aria-label="Loading feedback" className="space-y-6"><span className="sr-only">Loading feedback…</span><div aria-hidden="true" className="h-8 w-40 animate-pulse rounded bg-elevated" /><div aria-hidden="true" className="h-20 animate-pulse rounded bg-elevated" /><div aria-hidden="true" className="divide-y divide-border rounded-xl border border-border">{Array.from({ length: 5 }, (_, i) => <div key={i} className="space-y-3 p-4"><div className="h-5 w-4/5 animate-pulse rounded bg-elevated" /><div className="h-4 w-1/2 animate-pulse rounded bg-elevated" /></div>)}</div></div>;
+}

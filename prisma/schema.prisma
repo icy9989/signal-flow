@@ -36,6 +36,11 @@ enum FeedbackSentiment {
 enum FeedbackCategory {
   BUG
   FEATURE_REQUEST
+  USABILITY
+  PERFORMANCE
+  PRICING
+  SUPPORT
+  POSITIVE_FEEDBACK
   COMPLAINT
   PRAISE
   QUESTION
@@ -152,6 +157,7 @@ model Feedback {
   customerReference String?
   occurredAt        DateTime?
   processingStatus  FeedbackProcessingStatus @default(PENDING)
+  analysisErrorCode String?
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
 
@@ -175,10 +181,12 @@ model FeedbackAnalysis {
   sentiment      FeedbackSentiment?
   category       FeedbackCategory?
   topicLabel     String?
+  topics         String[]           @default([])
   severity       FeedbackSeverity?
   summary        String?
   model          String
   schemaVersion  String
+  promptVersion  String?
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 

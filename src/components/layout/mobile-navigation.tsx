@@ -7,14 +7,17 @@ import { Navigation } from "@/components/layout/navigation";
 import { WorkspaceSwitcher } from "@/components/organization/workspace-switcher";
 import { usePathname } from "next/navigation";
 
-export function MobileNavigation({ workspaces, activeId }: { workspaces: { id: string; name: string }[]; activeId?: string }) {
+import { ProjectSelector, type ProjectSelectorProps } from "@/components/project/project-selector";
+
+export function MobileNavigation({ workspaces, activeId, projectSelection }: { workspaces: { id: string; name: string }[]; activeId?: string; projectSelection: ProjectSelectorProps }) {
   const pathname = usePathname();
-  return <Sheet key={`${pathname}:${activeId}`}>
+  return <Sheet key={`${pathname}:${activeId}:${projectSelection.activeId}`}>
     <SheetTrigger asChild><Button variant="ghost" size="icon" aria-label="Open navigation" className="lg:hidden"><Menu /></Button></SheetTrigger>
     <SheetContent>
       <SheetTitle className="mb-2 text-lg font-semibold">SignalFlow</SheetTitle>
       <SheetDescription className="mb-6 text-xs text-secondary">Your feedback workspace</SheetDescription>
       <WorkspaceSwitcher workspaces={workspaces} activeId={activeId} />
+      {activeId && <ProjectSelector {...projectSelection} />}
       <Navigation />
     </SheetContent>
   </Sheet>;
